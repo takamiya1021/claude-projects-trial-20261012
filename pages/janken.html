@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>じゃんけんゲーム</title>
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --card: #ffffff;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --line: #e5e1d8;
+    --win: #15803d;
+    --lose: #b91c1c;
+    --draw: #a16207;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --card: #20232a;
+      --ink: #eceef2;
+      --muted: #9aa1ad;
+      --line: #333843;
+      --win: #4ade80;
+      --lose: #f87171;
+      --draw: #facc15;
+      --accent: #60a5fa;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  main {
+    width: 100%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .arena {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    text-align: center;
+  }
+  .side .label { font-size: 0.85rem; color: var(--muted); }
+  .side .hand { font-size: 3.5rem; line-height: 1.2; min-height: 4.2rem; }
+  .side .name { font-size: 0.95rem; min-height: 1.3em; }
+  .vs { color: var(--muted); font-weight: 600; padding: 0 8px; }
+  .result {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    min-height: 2.2rem;
+    margin-top: 8px;
+  }
+  .result.win { color: var(--win); }
+  .result.lose { color: var(--lose); }
+  .result.draw { color: var(--draw); }
+  .result.idle { color: var(--muted); font-size: 1rem; font-weight: 400; }
+  .choices {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .choices button {
+    font: inherit;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 14px;
+    padding: 14px 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: transform 0.08s, border-color 0.15s;
+  }
+  .choices button .e { font-size: 2.2rem; line-height: 1; }
+  .choices button:hover { border-color: var(--accent); }
+  .choices button:active { transform: scale(0.96); }
+  .choices button:focus-visible, .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .score {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    text-align: center;
+  }
+  .score .k { font-size: 0.85rem; color: var(--muted); }
+  .score .v { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score .w .v { color: var(--win); }
+  .score .l .v { color: var(--lose); }
+  .score .d .v { color: var(--draw); }
+  .reset {
+    font: inherit;
+    align-self: center;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 20px;
+    cursor: pointer;
+  }
+  .reset:hover { color: var(--ink); border-color: var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>じゃんけん</h1>
+
+  <section class="card" aria-live="polite">
+    <div class="arena">
+      <div class="side">
+        <div class="label">あなた</div>
+        <div class="hand" id="playerHand">❔</div>
+        <div class="name" id="playerName"></div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="side">
+        <div class="label">コンピュータ</div>
+        <div class="hand" id="cpuHand">❔</div>
+        <div class="name" id="cpuName"></div>
+      </div>
+    </div>
+    <div class="result idle" id="result">手をえらんでね</div>
+  </section>
+
+  <div class="choices">
+    <button type="button" data-hand="rock"><span class="e">✊</span>グー</button>
+    <button type="button" data-hand="scissors"><span class="e">✌️</span>チョキ</button>
+    <button type="button" data-hand="paper"><span class="e">✋</span>パー</button>
+  </div>
+
+  <section class="card score">
+    <div class="w"><div class="k">勝ち</div><div class="v" id="wins">0</div></div>
+    <div class="l"><div class="k">負け</div><div class="v" id="losses">0</div></div>
+    <div class="d"><div class="k">あいこ</div><div class="v" id="draws">0</div></div>
+  </section>
+
+  <button type="button" class="reset" id="reset">スコアをリセット</button>
+</main>
+
+<script>
+  "use strict";
+  var HANDS = {
+    rock:     { emoji: "✊", name: "グー" },
+    scissors: { emoji: "✌️", name: "チョキ" },
+    paper:    { emoji: "✋", name: "パー" }
+  };
+  var KEYS = ["rock", "scissors", "paper"];
+  // key beats value
+  var BEATS = { rock: "scissors", scissors: "paper", paper: "rock" };
+
+  function judge(player, cpu) {
+    if (player === cpu) return "draw";
+    return BEATS[player] === cpu ? "win" : "lose";
+  }
+
+  var LABEL = { win: "勝ち！", lose: "負け…", draw: "あいこ" };
+  var score = { win: 0, lose: 0, draw: 0 };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function renderScore() {
+    $("wins").textContent = score.win;
+    $("losses").textContent = score.lose;
+    $("draws").textContent = score.draw;
+  }
+
+  function play(player) {
+    var cpu = KEYS[Math.floor(Math.random() * KEYS.length)];
+    var outcome = judge(player, cpu);
+    score[outcome]++;
+    $("playerHand").textContent = HANDS[player].emoji;
+    $("playerName").textContent = HANDS[player].name;
+    $("cpuHand").textContent = HANDS[cpu].emoji;
+    $("cpuName").textContent = HANDS[cpu].name;
+    var r = $("result");
+    r.textContent = LABEL[outcome];
+    r.className = "result " + outcome;
+    renderScore();
+  }
+
+  function reset() {
+    score = { win: 0, lose: 0, draw: 0 };
+    $("playerHand").textContent = "❔";
+    $("cpuHand").textContent = "❔";
+    $("playerName").textContent = "";
+    $("cpuName").textContent = "";
+    var r = $("result");
+    r.textContent = "手をえらんでね";
+    r.className = "result idle";
+    renderScore();
+  }
+
+  if (typeof document !== "undefined") {
+    document.querySelectorAll(".choices button").forEach(function (b) {
+      b.addEventListener("click", function () { play(b.getAttribute("data-hand")); });
+    });
+    $("reset").addEventListener("click", reset);
+  }
+</script>
+</body>
+</html>
