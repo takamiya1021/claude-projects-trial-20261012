@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ミニページ集</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #1f2330;
+    --muted: #6b7180;
+    --accent: #3b6cf6;
+    --border: #e3e6ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c;
+      --card: #1e212a;
+      --text: #eceef4;
+      --muted: #9aa0ae;
+      --accent: #7f9dff;
+      --border: #2c303b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 560px; }
+  h1 { font-size: 1.6rem; margin: 0 0 6px; }
+  p.lead { color: var(--muted); margin: 0 0 28px; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  a.card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: inherit;
+    text-decoration: none;
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  a.card:hover, a.card:focus-visible { transform: translateY(-2px); border-color: var(--accent); outline: none; }
+  .icon { font-size: 2rem; line-height: 1; }
+  .name { font-weight: 700; font-size: 1.05rem; }
+  .desc { color: var(--muted); font-size: .9rem; margin-top: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ミニページ集</h1>
+  <p class="lead">3つのスレッドが作ったページだよ。</p>
+  <ul>
+    <li><a class="card" href="pages/clock.html">
+      <span class="icon" aria-hidden="true">🕒</span>
+      <span><div class="name">時計</div><div class="desc">今の時刻を表示する時計（thread-1）</div></span>
+    </a></li>
+    <li><a class="card" href="pages/janken.html">
+      <span class="icon" aria-hidden="true">✊</span>
+      <span><div class="name">じゃんけん</div><div class="desc">コンピューターとじゃんけん勝負（thread-2）</div></span>
+    </a></li>
+    <li><a class="card" href="pages/timer.html">
+      <span class="icon" aria-hidden="true">⏳</span>
+      <span><div class="name">3分タイマー</div><div class="desc">スタート・一時停止・リセットつき（thread-3）</div></span>
+    </a></li>
+  </ul>
+</main>
+</body>
+</html>
