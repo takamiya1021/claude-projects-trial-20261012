@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>時計</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --card: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6b6b70;
+    --accent: #2f6fde;
+    --border: #e4e2dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416;
+      --card: #1e1e22;
+      --text: #f2f2f4;
+      --muted: #9a9aa2;
+      --accent: #7aa7ff;
+      --border: #2c2c32;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .clock {
+    width: 100%;
+    max-width: 560px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 20px;
+    text-align: center;
+  }
+  .label {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .date {
+    margin: 0 0 16px;
+    font-size: clamp(1rem, 4.5vw, 1.35rem);
+  }
+  .time {
+    margin: 0;
+    font-size: clamp(2.6rem, 15vw, 5.5rem);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+  }
+  .time .sec { color: var(--accent); }
+  .tz {
+    margin: 16px 0 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <main class="clock" aria-label="現在時刻">
+    <p class="label">現在の時刻</p>
+    <p class="date" id="date">----年--月--日（-）</p>
+    <p class="time" id="time" aria-live="off">--:--:<span class="sec">--</span></p>
+    <p class="tz" id="tz"></p>
+  </main>
+<script>
+(function () {
+  var WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+  var dateEl = document.getElementById("date");
+  var timeEl = document.getElementById("time");
+  var tzEl = document.getElementById("tz");
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+  function render() {
+    var now = new Date();
+    dateEl.textContent = now.getFullYear() + "年" + (now.getMonth() + 1) + "月" +
+      now.getDate() + "日（" + WEEKDAYS[now.getDay()] + "）";
+    timeEl.innerHTML = pad(now.getHours()) + ":" + pad(now.getMinutes()) +
+      ':<span class="sec">' + pad(now.getSeconds()) + "</span>";
+    document.title = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds()) + " - 時計";
+    // 次の秒の境目に合わせて更新し、ずれを防ぐ
+    setTimeout(render, 1000 - now.getMilliseconds() + 5);
+  }
+
+  try {
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) tzEl.textContent = "タイムゾーン: " + tz;
+  } catch (e) { /* 取得できなければ表示しない */ }
+
+  render();
+})();
+</script>
+</body>
+</html>
