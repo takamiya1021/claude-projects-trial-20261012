@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>落ちものパズル</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#14161f; color:#eee; font-family:system-ui,sans-serif; }
+  #wrap { display:flex; gap:16px; padding:12px; }
+  canvas { background:#0b0c12; border:2px solid #444; border-radius:6px; }
+  #side { width:150px; display:flex; flex-direction:column; gap:10px; }
+  .box { background:#1e2130; border-radius:6px; padding:8px 10px; }
+  .box small { color:#9aa; display:block; }
+  .box b { font-size:20px; }
+  button { font-size:15px; padding:8px; border:0; border-radius:6px; background:#4a7bd0; color:#fff; cursor:pointer; }
+  #help { font-size:12px; color:#9aa; line-height:1.6; }
+  #touch { display:none; grid-template-columns:repeat(4,1fr); gap:6px; }
+  @media (pointer:coarse) { #touch { display:grid; } }
+  @media (max-width:520px) { #wrap { flex-direction:column; align-items:center; } #side { width:260px; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="board" width="300" height="600"></canvas>
+  <div id="side">
+    <div class="box"><small>スコア</small><b id="score">0</b></div>
+    <div class="box"><small>ハイスコア</small><b id="hi">0</b></div>
+    <div class="box"><small>レベル</small><b id="level">1</b></div>
+    <div class="box"><small>ライン</small><b id="lines">0</b></div>
+    <div class="box"><small>次のブロック</small><canvas id="next" width="100" height="70" style="border:0"></canvas></div>
+    <button id="start">スタート</button>
+    <div id="touch">
+      <button data-a="left">←</button><button data-a="rotate">⟳</button>
+      <button data-a="right">→</button><button data-a="hard">⤓</button>
+    </div>
+    <div id="help">← → 移動 / ↑ 回転<br>↓ 加速 / Space 即落下<br>P 一時停止</div>
+  </div>
+</div>
+<script>
+'use strict';
+var COLS = 10, ROWS = 20;
+var PIECES = {
+  I: { color:'#35c9e8', m:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+  O: { color:'#f0d030', m:[[1,1],[1,1]] },
+  T: { color:'#a65cd6', m:[[0,1,0],[1,1,1],[0,0,0]] },
+  S: { color:'#4cc84c', m:[[0,1,1],[1,1,0],[0,0,0]] },
+  Z: { color:'#e84a4a', m:[[1,1,0],[0,1,1],[0,0,0]] },
+  J: { color:'#3a5be0', m:[[1,0,0],[1,1,1],[0,0,0]] },
+  L: { color:'#f09030', m:[[0,0,1],[1,1,1],[0,0,0]] }
+};
+var NAMES = Object.keys(PIECES);
+var LINE_POINTS = [0, 100, 300, 500, 800];
+var HI_KEY = 'tetris-highscore';
+
+function rotateCW(m) {
+  var n = m.length, r = [];
+  for (var y = 0; y < n; y++) { r.push([]); for (var x = 0; x < n; x++) r[y].push(m[n - 1 - x][y]); }
+  return r;
+}
+function createBoard() {
+  var b = [];
+  for (var y = 0; y < ROWS; y++) b.push(new Array(COLS).fill(0));
+  return b;
+}
+function collides(board, m, px, py) {
+  for (var y = 0; y < m.length; y++) for (var x = 0; x < m[y].length; x++) {
+    if (!m[y][x]) continue;
+    var bx = px + x, by = py + y;
+    if (bx < 0 || bx >= COLS || by >= ROWS) return true;
+    if (by >= 0 && board[by][bx]) return true;
+  }
+  return false;
+}
+function clearLines(board) {
+  var kept = board.filter(function (row) { return !row.every(Boolean); });
+  var n = ROWS - kept.length;
+  while (kept.length < ROWS) kept.unshift(new Array(COLS).fill(0));
+  return { board: kept, cleared: n };
+}
+function levelFor(lines) { return Math.floor(lines / 10) + 1; }
+function intervalFor(level) { return Math.max(100, 1000 - (level - 1) * 90); }
+
+function loadHighScore(storage) {
+  try { var v = parseInt(storage.getItem(HI_KEY), 10); return v > 0 ? v : 0; } catch (e) { return 0; }
+}
+function saveHighScore(storage, score) {
+  try { storage.setItem(HI_KEY, String(score)); return true; } catch (e) { return false; }
+}
+
+function Game(rng, storage) {
+  this.rng = rng || Math.random;
+  this.storage = storage || null;
+  this.highScore = storage ? loadHighScore(storage) : 0;
+  this.reset();
+}
+Game.prototype.reset = function () {
+  this.board = createBoard();
+  this.score = 0; this.lines = 0; this.level = 1;
+  this.over = false; this.bag = [];
+  this.next = this.takeFromBag();
+  this.spawn();
+};
+Game.prototype.takeFromBag = function () {
+  if (!this.bag.length) {
+    var b = NAMES.slice();
+    for (var i = b.length - 1; i > 0; i--) {
+      var j = Math.floor(this.rng() * (i + 1)); var t = b[i]; b[i] = b[j]; b[j] = t;
+    }
+    this.bag = b;
+  }
+  return this.bag.pop();
+};
+Game.prototype.spawn = function () {
+  this.type = this.next; this.next = this.takeFromBag();
+  this.m = PIECES[this.type].m.map(function (r) { return r.slice(); });
+  this.x = Math.floor((COLS - this.m.length) / 2); this.y = 0;
+  if (collides(this.board, this.m, this.x, this.y)) this.finish();
+};
+Game.prototype.finish = function () {
+  this.over = true;
+  if (this.score > this.highScore) {
+    this.highScore = this.score;
+    if (this.storage) saveHighScore(this.storage, this.score);
+  }
+};
+Game.prototype.move = function (dx) {
+  if (this.over || collides(this.board, this.m, this.x + dx, this.y)) return false;
+  this.x += dx; return true;
+};
+Game.prototype.rotate = function () {
+  if (this.over) return false;
+  var r = rotateCW(this.m), kicks = [0, -1, 1, -2, 2];
+  for (var i = 0; i < kicks.length; i++) {
+    if (!collides(this.board, r, this.x + kicks[i], this.y)) {
+      this.m = r; this.x += kicks[i]; return true;
+    }
+  }
+  return false;
+};
+Game.prototype.lock = function () {
+  var color = this.type;
+  for (var y = 0; y < this.m.length; y++) for (var x = 0; x < this.m[y].length; x++) {
+    if (this.m[y][x] && this.y + y >= 0) this.board[this.y + y][this.x + x] = color;
+  }
+  var res = clearLines(this.board);
+  this.board = res.board;
+  if (res.cleared) {
+    this.score += LINE_POINTS[res.cleared] * this.level;
+    this.lines += res.cleared;
+    this.level = levelFor(this.lines);
+  }
+  if (this.score > this.highScore) {
+    this.highScore = this.score;
+    if (this.storage) saveHighScore(this.storage, this.score);
+  }
+  this.spawn();
+  return res.cleared;
+};
+// 1マス下へ。着地したらロックする
+Game.prototype.softDrop = function () {
+  if (this.over) return false;
+  if (!collides(this.board, this.m, this.x, this.y + 1)) { this.y++; return true; }
+  this.lock(); return false;
+};
+Game.prototype.hardDrop = function () {
+  if (this.over) return 0;
+  var d = 0;
+  while (!collides(this.board, this.m, this.x, this.y + 1)) { this.y++; d++; }
+  this.score += d * 2;
+  this.lock();
+  return d;
+};
+Game.prototype.ghostY = function () {
+  var y = this.y;
+  while (!collides(this.board, this.m, this.x, y + 1)) y++;
+  return y;
+};
+
+// ---- ブラウザ用の画面処理 ----
+if (typeof document !== 'undefined') {
+  (function () {
+    var CELL = 30;
+    var cv = document.getElementById('board'), ctx = cv.getContext('2d');
+    var nx = document.getElementById('next').getContext('2d');
+    var game = new Game(Math.random, window.localStorage);
+    var timer = null, paused = false, running = false;
+    var el = function (id) { return document.getElementById(id); };
+
+    function cell(c, x, y, type, size, alpha) {
+      c.globalAlpha = alpha || 1;
+      c.fillStyle = PIECES[type].color;
+      c.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+      c.globalAlpha = 1;
+    }
+    function draw() {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.strokeStyle = '#1a1d2a';
+      for (var i = 1; i < COLS; i++) { ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, cv.height); ctx.stroke(); }
+      for (var j = 1; j < ROWS; j++) { ctx.beginPath(); ctx.moveTo(0, j * CELL); ctx.lineTo(cv.width, j * CELL); ctx.stroke(); }
+      for (var y = 0; y < ROWS; y++) for (var x = 0; x < COLS; x++)
+        if (game.board[y][x]) cell(ctx, x, y, game.board[y][x], CELL);
+      if (!game.over) {
+        var gy = game.ghostY();
+        game.m.forEach(function (row, y) { row.forEach(function (v, x) {
+          if (v) { cell(ctx, game.x + x, gy + y, game.type, CELL, 0.25); cell(ctx, game.x + x, game.y + y, game.type, CELL); }
+        }); });
+      }
+      nx.clearRect(0, 0, 100, 70);
+      var nm = PIECES[game.next].m, s = 20;
+      var ox = (100 - nm.length * s) / 2 / s, oy = (70 - nm.length * s) / 2 / s;
+      nm.forEach(function (row, y) { row.forEach(function (v, x) { if (v) cell(nx, x + ox, y + oy, game.next, s); }); });
+      el('score').textContent = game.score; el('hi').textContent = game.highScore;
+      el('level').textContent = game.level; el('lines').textContent = game.lines;
+      if (game.over || paused || !running) {
+        ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 28px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText(game.over ? 'GAME OVER' : paused ? 'PAUSE' : 'READY', cv.width / 2, cv.height / 2);
+      }
+    }
+    function schedule() {
+      clearTimeout(timer);
+      if (!running || paused || game.over) return;
+      timer = setTimeout(function () { game.softDrop(); schedule(); draw(); }, intervalFor(game.level));
+    }
+    function act(a) {
+      if (!running || paused || game.over) return;
+      if (a === 'left') game.move(-1);
+      else if (a === 'right') game.move(1);
+      else if (a === 'rotate') game.rotate();
+      else if (a === 'down') { game.softDrop(); game.score += 1; schedule(); }
+      else if (a === 'hard') { game.hardDrop(); schedule(); }
+      draw();
+    }
+    function start() {
+      game.reset(); running = true; paused = false;
+      el('start').textContent = 'リスタート';
+      schedule(); draw();
+    }
+    document.addEventListener('keydown', function (e) {
+      var map = { ArrowLeft:'left', ArrowRight:'right', ArrowUp:'rotate', ArrowDown:'down', ' ':'hard' };
+      if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
+      else if (e.key === 'p' || e.key === 'P') {
+        if (running && !game.over) { paused = !paused; schedule(); draw(); }
+      }
+    });
+    el('start').addEventListener('click', function (e) { e.target.blur(); start(); });
+    Array.prototype.forEach.call(document.querySelectorAll('#touch button'), function (b) {
+      b.addEventListener('click', function () { act(b.dataset.a); });
+    });
+    draw();
+  })();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { COLS: COLS, ROWS: ROWS, PIECES: PIECES, NAMES: NAMES, LINE_POINTS: LINE_POINTS,
+    HI_KEY: HI_KEY, rotateCW: rotateCW, createBoard: createBoard, collides: collides,
+    clearLines: clearLines, levelFor: levelFor, intervalFor: intervalFor,
+    loadHighScore: loadHighScore, saveHighScore: saveHighScore, Game: Game };
+}
+</script>
+</body>
+</html>
