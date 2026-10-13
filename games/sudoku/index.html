@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数独</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #1f2330;
+    --muted: #6b7180;
+    --accent: #3b6cf6;
+    --border: #e3e6ee;
+    --line: #8a90a2;
+    --sel: #cfdcff;
+    --peer: #eef2ff;
+    --same: #bcd0ff;
+    --given: #1f2330;
+    --user: #2f5be0;
+    --wrong: #d93a3a;
+    --wrong-bg: #ffe0e0;
+    --hint-bg: #fff2b8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c;
+      --card: #1e212a;
+      --text: #eceef4;
+      --muted: #9aa0ae;
+      --accent: #7f9dff;
+      --border: #2c303b;
+      --line: #6b7180;
+      --sel: #34457a;
+      --peer: #262b3b;
+      --same: #3f5499;
+      --given: #eceef4;
+      --user: #8fb0ff;
+      --wrong: #ff7b7b;
+      --wrong-bg: #4a2428;
+      --hint-bg: #5a4d1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 20px 16px 40px;
+  }
+  main { width: 100%; max-width: 480px; }
+  h1 { font-size: 1.5rem; margin: 0 0 12px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .bar .grow { flex: 1; }
+  select, button {
+    font: inherit;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .35; cursor: default; }
+  .stats { color: var(--muted); font-size: .9rem; display: flex; gap: 14px; margin-bottom: 8px; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    border: 2px solid var(--line);
+    background: var(--card);
+    aspect-ratio: 1;
+    user-select: none;
+  }
+  .cell {
+    position: relative;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.1rem, 5.5vw, 1.8rem);
+    min-width: 0;
+  }
+  .cell.br { border-right: 2px solid var(--line); }
+  .cell.bb { border-bottom: 2px solid var(--line); }
+  .cell:nth-child(9n) { border-right: 0; }
+  .cell:nth-child(n+73) { border-bottom: 0; }
+  .cell.peer { background: var(--peer); }
+  .cell.same { background: var(--same); }
+  .cell.sel { background: var(--sel); }
+  .cell.hint { background: var(--hint-bg); }
+  .cell.wrong { background: var(--wrong-bg); }
+  .cell .v { color: var(--user); font-weight: 500; }
+  .cell.given .v { color: var(--given); font-weight: 700; }
+  .cell.wrong .v { color: var(--wrong); }
+  .notes {
+    position: absolute; inset: 1px;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    font-size: clamp(.5rem, 2.4vw, .8rem);
+    color: var(--muted);
+    line-height: 1;
+    pointer-events: none;
+  }
+  .notes span { display: flex; align-items: center; justify-content: center; }
+  #msg { min-height: 2.6em; margin: 10px 0; color: var(--muted); font-size: .95rem; }
+  #msg.win { color: var(--accent); font-weight: 700; font-size: 1.1rem; }
+  .pad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-bottom: 10px; }
+  .pad button { padding: 8px 0; font-size: 1.2rem; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .pad small { font-size: .6rem; color: var(--muted); }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tools button { flex: 1; min-width: 70px; }
+  footer { color: var(--muted); font-size: .8rem; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>数独</h1>
+  <div class="bar">
+    <select id="difficulty" aria-label="難易度">
+      <option value="easy">かんたん</option>
+      <option value="medium" selected>ふつう</option>
+      <option value="hard">むずかしい</option>
+    </select>
+    <button id="newGame" class="primary">新しい問題</button>
+  </div>
+  <div class="stats">
+    <span>⏱ <span id="time">00:00</span></span>
+    <span>ミス: <span id="mistakes">0</span></span>
+    <span>ヒント: <span id="hints">0</span></span>
+  </div>
+  <div id="board" role="grid" aria-label="数独の盤面"></div>
+  <div id="msg" role="status"></div>
+  <div class="pad" id="pad"></div>
+  <div class="tools">
+    <button id="notesBtn">メモ: OFF</button>
+    <button id="eraseBtn">消す</button>
+    <button id="undoBtn">戻す</button>
+    <button id="hintBtn">ヒント</button>
+  </div>
+  <footer>キー操作: 1〜9 入力 / 0・Backspace 消す / 矢印 移動 / N メモ / H ヒント / Z 戻す</footer>
+</main>
+
+<!-- ゲームのロジック（DOMに触らない。test.js から取り出してテストする） -->
+<script id="core">
+var Sudoku = (function () {
+  'use strict';
+
+  var ROW = [], COL = [], BOX = [], UNITS = [];
+  var i, u;
+  for (i = 0; i < 81; i++) {
+    ROW[i] = Math.floor(i / 9);
+    COL[i] = i % 9;
+    BOX[i] = Math.floor(ROW[i] / 3) * 3 + Math.floor(COL[i] / 3);
+  }
+  for (u = 0; u < 9; u++) {
+    UNITS.push({ kind: 'row', index: u, cells: [] });
+  }
+  for (u = 0; u < 9; u++) {
+    UNITS.push({ kind: 'col', index: u, cells: [] });
+  }
+  for (u = 0; u < 9; u++) {
+    UNITS.push({ kind: 'box', index: u, cells: [] });
+  }
+  for (i = 0; i < 81; i++) {
+    UNITS[ROW[i]].cells.push(i);
+    UNITS[9 + COL[i]].cells.push(i);
+    UNITS[18 + BOX[i]].cells.push(i);
+  }
+
+  var ALL = 0x3fe; // bit1..bit9
+
+  function popcount(x) {
+    var n = 0;
+    while (x) { x &= x - 1; n++; }
+    return n;
+  }
+
+  // 種(seed)つき乱数。同じ seed なら同じ問題になる
+  function makeRng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffle(arr, rnd) {
+    for (var k = arr.length - 1; k > 0; k--) {
+      var j = Math.floor(rnd() * (k + 1));
+      var t = arr[k]; arr[k] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  // 解を最大 limit 個まで数える。first は最初に見つけた解。
+  // rnd を渡すと数字を試す順番がランダムになる（盤面の自動生成用）
+  function search(grid, limit, rnd) {
+    var g = grid.slice();
+    var rows = [], cols = [], boxes = [];
+    var k;
+    for (k = 0; k < 9; k++) { rows[k] = 0; cols[k] = 0; boxes[k] = 0; }
+    for (k = 0; k < 81; k++) {
+      var d = g[k];
+      if (d) {
+        var b = 1 << d;
+        if ((rows[ROW[k]] & b) || (cols[COL[k]] & b) || (boxes[BOX[k]] & b)) {
+          return { count: 0, first: null };
+        }
+        rows[ROW[k]] |= b; cols[COL[k]] |= b; boxes[BOX[k]] |= b;
+      }
+    }
+    var count = 0, first = null;
+
+    function rec() {
+      var best = -1, bestMask = 0, bestN = 10;
+      for (var c = 0; c < 81; c++) {
+        if (g[c] === 0) {
+          var mask = ALL & ~(rows[ROW[c]] | cols[COL[c]] | boxes[BOX[c]]);
+          var n = popcount(mask);
+          if (n < bestN) {
+            best = c; bestMask = mask; bestN = n;
+            if (n === 0) return false; // 行き止まり
+            if (n === 1) break;
+          }
+        }
+      }
+      if (best === -1) {
+        count++;
+        if (!first) first = g.slice();
+        return count >= limit;
+      }
+      var digits = [];
+      for (var v = 1; v <= 9; v++) if (bestMask & (1 << v)) digits.push(v);
+      if (rnd) shuffle(digits, rnd);
+      for (var x = 0; x < digits.length; x++) {
+        var dv = digits[x], bit = 1 << dv;
+        g[best] = dv;
+        rows[ROW[best]] |= bit; cols[COL[best]] |= bit; boxes[BOX[best]] |= bit;
+        var stop = rec();
+        rows[ROW[best]] &= ~bit; cols[COL[best]] &= ~bit; boxes[BOX[best]] &= ~bit;
+        g[best] = 0;
+        if (stop) return true;
+      }
+      return false;
+    }
+
+    rec();
+    return { count: count, first: first };
+  }
+
+  function countSolutions(grid, limit) {
+    return search(grid, limit || 2).count;
+  }
+
+  function solve(grid) {
+    return search(grid, 1).first;
+  }
+
+  // 完成していて、行・列・ブロックすべてに 1〜9 が1個ずつ入っているか
+  function isSolved(grid) {
+    if (!grid || grid.length !== 81) return false;
+    for (var k = 0; k < UNITS.length; k++) {
+      var seen = 0;
+      for (var j = 0; j < 9; j++) {
+        var d = grid[UNITS[k].cells[j]];
+        if (!(d >= 1 && d <= 9)) return false;
+        seen |= 1 << d;
+      }
+      if (seen !== ALL) return false;
+    }
+    return true;
+  }
+
+  // 難易度ごとの「ヒント数(最初から入っている数字の数)」の目標
+  var TARGET_CLUES = { easy: 42, medium: 34, hard: 27 };
+
+  function generate(difficulty, seed) {
+    var target = TARGET_CLUES[difficulty];
+    if (!target) throw new Error('unknown difficulty: ' + difficulty);
+    var rnd = makeRng(seed === undefined ? Math.floor(Math.random() * 4294967296) : seed);
+    var empty = [];
+    for (var k = 0; k < 81; k++) empty.push(0);
+    var solution = search(empty, 1, rnd).first;
+    var best = null;
+
+    // 数字を1個ずつ抜いて、答えが1つのままなら採用。目標数に届かなければ数回やり直す
+    for (var attempt = 0; attempt < 8; attempt++) {
+      var puzzle = solution.slice();
+      var order = shuffle(empty.map(function (_, idx) { return idx; }), rnd);
+      var clues = 81;
+      for (var o = 0; o < order.length && clues > target; o++) {
+        var cell = order[o], keep = puzzle[cell];
+        puzzle[cell] = 0;
+        if (search(puzzle, 2).count === 1) clues--;
+        else puzzle[cell] = keep;
+      }
+      if (!best || clues < best.clues) best = { puzzle: puzzle, clues: clues };
+      if (clues <= target) break;
+    }
+    return { puzzle: best.puzzle, solution: solution, difficulty: difficulty, clues: best.clues };
+  }
+
+  function candidates(grid, cell) {
+    var used = 0;
+    for (var j = 0; j < 9; j++) {
+      used |= 1 << grid[UNITS[ROW[cell]].cells[j]];
+      used |= 1 << grid[UNITS[9 + COL[cell]].cells[j]];
+      used |= 1 << grid[UNITS[18 + BOX[cell]].cells[j]];
+    }
+    return ALL & ~used;
+  }
+
+  var UNIT_NAME = { row: '行', col: '列', box: 'ブロック' };
+
+  // ヒントを1つ返す。返す type:
+  //  mistake … 間違って入れた数字がある
+  //  naked   … そのマスに入れられる数字が1つしかない
+  //  hidden  … 行/列/ブロックの中で、その数字を置けるマスが1つしかない
+  //  reveal  … 論理で決まるものがないので、答えを1マス教える
+  //  null    … もう空きマスがない
+  function getHint(grid, solution, rnd) {
+    var k, empties = [];
+    for (k = 0; k < 81; k++) {
+      if (grid[k] && grid[k] !== solution[k]) return { type: 'mistake', index: k, value: solution[k] };
+      if (!grid[k]) empties.push(k);
+    }
+    if (!empties.length) return null;
+
+    var cand = {};
+    for (k = 0; k < empties.length; k++) {
+      cand[empties[k]] = candidates(grid, empties[k]);
+      if (popcount(cand[empties[k]]) === 1) {
+        return { type: 'naked', index: empties[k], value: solution[empties[k]] };
+      }
+    }
+    for (var u2 = 0; u2 < UNITS.length; u2++) {
+      for (var d = 1; d <= 9; d++) {
+        var spots = [], placed = false;
+        for (var j = 0; j < 9; j++) {
+          var c = UNITS[u2].cells[j];
+          if (grid[c] === d) { placed = true; break; }
+          if (!grid[c] && (cand[c] & (1 << d))) spots.push(c);
+        }
+        if (!placed && spots.length === 1) {
+          return {
+            type: 'hidden', index: spots[0], value: solution[spots[0]],
+            unit: UNITS[u2].kind, unitIndex: UNITS[u2].index, digit: d
+          };
+        }
+      }
+    }
+    var pick = rnd ? empties[Math.floor(rnd() * empties.length)] : empties[0];
+    return { type: 'reveal', index: pick, value: solution[pick] };
+  }
+
+  function describeHint(h) {
+    var pos = (ROW[h.index] + 1) + '行' + (COL[h.index] + 1) + '列';
+    if (h.type === 'mistake') return pos + 'の数字が間違ってるよ。もう一度ヒントを押すと消すよ。';
+    if (h.type === 'naked') return pos + 'は、入れられる数字が1つだけだよ。もう一度ヒントを押すと入れるよ。';
+    if (h.type === 'hidden') {
+      return UNIT_NAME[h.unit] + (h.unitIndex + 1) + 'の中で、' + h.digit + 'を置けるのはここ(' + pos +
+        ')だけだよ。もう一度ヒントを押すと入れるよ。';
+    }
+    return pos + 'が次の候補だよ。論理で決まる所がなかったから答えを教えるね。もう一度ヒントを押すと入れるよ。';
+  }
+
+  return {
+    ROW: ROW, COL: COL, BOX: BOX, UNITS: UNITS,
+    TARGET_CLUES: TARGET_CLUES,
+    makeRng: makeRng, popcount: popcount,
+    search: search, countSolutions: countSolutions, solve: solve,
+    isSolved: isSolved, generate: generate,
+    candidates: candidates, getHint: getHint, describeHint: describeHint
+  };
+})();
+</script>
+
+<!-- 画面まわり -->
+<script id="ui">
+(function () {
+  'use strict';
+  var S = Sudoku;
+  var boardEl = document.getElementById('board');
+  var msgEl = document.getElementById('msg');
+  var padEl = document.getElementById('pad');
+  var notesBtn = document.getElementById('notesBtn');
+  var undoBtn = document.getElementById('undoBtn');
+
+  var puzzle, solution, grid, notes, history, sel, notesMode, mistakes, hints, hintTarget, won;
+  var startTime, elapsedMs, timerId;
+  var cells = [];
+
+  // 盤面のマスを作る
+  for (var i = 0; i < 81; i++) {
+    var el = document.createElement('button');
+    el.className = 'cell' + (S.COL[i] % 3 === 2 && S.COL[i] < 8 ? ' br' : '') +
+      (S.ROW[i] % 3 === 2 && S.ROW[i] < 8 ? ' bb' : '');
+    el.setAttribute('role', 'gridcell');
+    el.dataset.i = i;
+    var v = document.createElement('span'); v.className = 'v';
+    var n = document.createElement('div'); n.className = 'notes';
+    for (var d = 1; d <= 9; d++) n.appendChild(document.createElement('span'));
+    el.appendChild(n); el.appendChild(v);
+    boardEl.appendChild(el);
+    cells.push({ el: el, v: v, n: n });
+  }
+  // 数字パッド
+  var padBtns = [];
+  for (var p = 1; p <= 9; p++) {
+    var b = document.createElement('button');
+    b.dataset.d = p;
+    b.innerHTML = p + '<small></small>';
+    padEl.appendChild(b);
+    padBtns.push(b);
+  }
+
+  function pad2(x) { return (x < 10 ? '0' : '') + x; }
+  function showTime() {
+    var s = Math.floor(elapsedMs / 1000);
+    document.getElementById('time').textContent = pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
+  }
+  function tick() {
+    elapsedMs = Date.now() - startTime;
+    showTime();
+  }
+  function setMsg(text, cls) { msgEl.textContent = text || ''; msgEl.className = cls || ''; }
+
+  function render() {
+    var sv = sel >= 0 ? grid[sel] : 0;
+    var counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (var k = 0; k < 81; k++) {
+      var c = cells[k], val = grid[k];
+      var cls = 'cell' + (S.COL[k] % 3 === 2 && S.COL[k] < 8 ? ' br' : '') +
+        (S.ROW[k] % 3 === 2 && S.ROW[k] < 8 ? ' bb' : '');
+      if (puzzle[k]) cls += ' given';
+      if (sel >= 0) {
+        if (k === sel) cls += ' sel';
+        else if (sv && val === sv) cls += ' same';
+        else if (S.ROW[k] === S.ROW[sel] || S.COL[k] === S.COL[sel] || S.BOX[k] === S.BOX[sel]) cls += ' peer';
+      }
+      if (val && val !== solution[k]) cls += ' wrong';
+      if (hintTarget && hintTarget.index === k) cls += ' hint';
+      c.el.className = cls;
+      c.v.textContent = val || '';
+      if (val && val === solution[k]) counts[val]++;
+      var spans = c.n.children;
+      for (var d = 1; d <= 9; d++) spans[d - 1].textContent = (!val && (notes[k] & (1 << d))) ? d : '';
+    }
+    for (var q = 1; q <= 9; q++) {
+      padBtns[q - 1].disabled = counts[q] >= 9;
+      padBtns[q - 1].lastChild.textContent = '残' + (9 - counts[q]);
+    }
+    document.getElementById('mistakes').textContent = mistakes;
+    document.getElementById('hints').textContent = hints;
+    notesBtn.textContent = 'メモ: ' + (notesMode ? 'ON' : 'OFF');
+    notesBtn.className = notesMode ? 'on' : '';
+    undoBtn.disabled = !history.length || won;
+  }
+
+  function pushHistory() {
+    history.push({ grid: grid.slice(), notes: notes.slice() });
+    if (history.length > 200) history.shift();
+  }
+
+  function checkWin() {
+    if (S.isSolved(grid)) {
+      won = true;
+      clearInterval(timerId);
+      tick();
+      setMsg('クリア！ ' + document.getElementById('time').textContent + ' / ミス ' + mistakes + ' / ヒント ' + hints, 'win');
+    }
+  }
+
+  function place(cell, d, isHint) {
+    pushHistory();
+    grid[cell] = d;
+    notes[cell] = 0;
+    if (!isHint && d !== solution[cell]) mistakes++;
+    // 同じ行・列・ブロックのメモからその数字を消す
+    if (d === solution[cell]) {
+      for (var k = 0; k < 81; k++) {
+        if (S.ROW[k] === S.ROW[cell] || S.COL[k] === S.COL[cell] || S.BOX[k] === S.BOX[cell]) notes[k] &= ~(1 << d);
+      }
+    }
+    hintTarget = null;
+    checkWin();
+  }
+
+  function input(d) {
+    if (won || sel < 0 || puzzle[sel]) return;
+    if (notesMode) {
+      if (grid[sel]) return;
+      pushHistory();
+      notes[sel] ^= 1 << d;
+      hintTarget = null;
+    } else {
+      if (grid[sel] === d) return;
+      place(sel, d, false);
+      if (!won && d !== solution[sel]) setMsg('あれ？ そこは違うみたい。');
+      else if (!won) setMsg('');
+    }
+    render();
+  }
+
+  function erase() {
+    if (won || sel < 0 || puzzle[sel] || (!grid[sel] && !notes[sel])) return;
+    pushHistory();
+    grid[sel] = 0; notes[sel] = 0; hintTarget = null;
+    render();
+  }
+
+  function undo() {
+    if (won || !history.length) return;
+    var h = history.pop();
+    grid = h.grid; notes = h.notes; hintTarget = null;
+    render();
+  }
+
+  function hint() {
+    if (won) return;
+    if (hintTarget) { // 2回目: 実行する
+      var t = hintTarget;
+      hintTarget = null;
+      if (t.type === 'mistake') {
+        pushHistory(); grid[t.index] = 0; notes[t.index] = 0;
+        setMsg('消したよ。');
+      } else {
+        place(t.index, t.value, true);
+        if (!won) setMsg('入れたよ。');
+      }
+      sel = t.index;
+      render();
+      return;
+    }
+    hints++;
+    var h = S.getHint(grid, solution);
+    if (!h) return;
+    hintTarget = h;
+    sel = h.index;
+    setMsg(S.describeHint(h));
+    render();
+  }
+
+  function newGame() {
+    var diff = document.getElementById('difficulty').value;
+    setMsg('問題を作ってるよ…');
+    clearInterval(timerId);
+    setTimeout(function () {
+      var g = S.generate(diff);
+      puzzle = g.puzzle; solution = g.solution;
+      grid = puzzle.slice();
+      notes = []; for (var k = 0; k < 81; k++) notes.push(0);
+      history = []; sel = -1; notesMode = false; mistakes = 0; hints = 0; hintTarget = null; won = false;
+      startTime = Date.now(); elapsedMs = 0; showTime();
+      timerId = setInterval(tick, 1000);
+      setMsg('');
+      render();
+    }, 20);
+  }
+
+  function move(dr, dc) {
+    if (sel < 0) { sel = 40; } else {
+      var r = Math.min(8, Math.max(0, S.ROW[sel] + dr));
+      var c = Math.min(8, Math.max(0, S.COL[sel] + dc));
+      sel = r * 9 + c;
+    }
+    render();
+  }
+
+  boardEl.addEventListener('click', function (e) {
+    var t = e.target.closest('.cell');
+    if (!t || !puzzle) return;
+    sel = +t.dataset.i;
+    render();
+  });
+  padEl.addEventListener('click', function (e) {
+    var t = e.target.closest('button');
+    if (t && puzzle) input(+t.dataset.d);
+  });
+  document.getElementById('newGame').addEventListener('click', newGame);
+  notesBtn.addEventListener('click', function () { notesMode = !notesMode; render(); });
+  document.getElementById('eraseBtn').addEventListener('click', erase);
+  undoBtn.addEventListener('click', undo);
+  document.getElementById('hintBtn').addEventListener('click', hint);
+
+  document.addEventListener('keydown', function (e) {
+    if (!puzzle || e.target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
+    var key = e.key;
+    if (key >= '1' && key <= '9') input(+key);
+    else if (key === '0' || key === 'Backspace' || key === 'Delete') erase();
+    else if (key === 'ArrowUp') move(-1, 0);
+    else if (key === 'ArrowDown') move(1, 0);
+    else if (key === 'ArrowLeft') move(0, -1);
+    else if (key === 'ArrowRight') move(0, 1);
+    else if (key === 'n' || key === 'N') { notesMode = !notesMode; render(); }
+    else if (key === 'h' || key === 'H') hint();
+    else if (key === 'z' || key === 'Z') undo();
+    else return;
+    e.preventDefault();
+  });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
